@@ -1,4 +1,5 @@
 const express = require('express');
+const session = require('express-session');
 const fs = require('fs');
 const cors = require('cors');
 const fetch = require('node-fetch');
@@ -8,7 +9,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const FILE = './data.json';
-
 const USPS_CONSUMER_KEY = 'GYI9wayR96LReWKj2Df03hjJKR96JTHWnUD4lwVjHGT4VwlB';
 const USPS_CONSUMER_SECRET = 'C52ifX9GdyInnhjAaSWOhlJTG1VmXvHIne1CJnUhabpbLyw5XvaiVaEGAAXkkn3L';
 
@@ -23,11 +23,27 @@ let subscribers = [];
 
 app.use(cors());
 app.use(express.json());
+app.use(session({
+  secret: 'secureTrackerPassword',
+  resave: false,
+  saveUninitialized: true
+}));
+
+// 🔐 Protect access to tracker.html
+app.get('/tracker.html', (req, res, next) => {
+  if (req.session && req.session.authenticated) {
+    next(); // proceed to public file
+  } else {
+    res.redirect('/index.html');
+  }
+});
+
 app.use(express.static('public'));
 
 app.post('/login', (req, res) => {
   const { password } = req.body;
   if (password === 'track123') {
+    req.session.authenticated = true;
     res.json({ success: true });
   } else {
     res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -74,7 +90,10 @@ async function getUSPSAccessToken() {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json'
     },
-    body: 'grant_type=client_credentials'
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      scope: 'tracking'
+    })
   });
 
   const text = await response.text();
@@ -181,4 +200,5 @@ app.get('/list', (req, res) => {
 
 loadData();
 updateStatuses();
+
 app.listen(PORT, () => console.log(`✅ USPS Tracker running at http://localhost:${PORT}`));
