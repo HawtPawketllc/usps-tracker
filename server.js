@@ -150,6 +150,17 @@ app.get('/list', (req, res) => {
   res.json(data);
 });
 
+// 🔐 Login check
+app.post('/login', (req, res) => {
+  const { password } = req.body;
+  if (password === 'track123') {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ success: false });
+  }
+});
+
+
 // 🔄 Start server
 loadData();
 updateStatuses();
