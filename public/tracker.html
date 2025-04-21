@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Brooke & Mills | USPS Tracker</title>
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" href="/icon.png" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
     :root {
@@ -114,14 +112,15 @@
 </head>
 <body>
   <div class="logo-wrapper">
-    <img src="/bm-logo1.png" alt="Brooke & Mills Logo">
+    <img src="bm-logo1.png" alt="Brooke & Mills Logo">
   </div>
 
   <div class="tracker-box">
     <h2 class="text-center mb-4">USPS Package Tracker</h2>
 
-    <div class="input-group mb-3">
-      <input id="trackingInput" type="text" class="form-control" placeholder="Enter USPS Tracking Number">
+    <div class="input-group mb-3 flex-wrap">
+      <input id="trackingInput" type="text" class="form-control mb-2" placeholder="Tracking Number">
+      <input id="nameInput" type="text" class="form-control mb-2" placeholder="Label or Name (e.g. Mom's Package)">
       <button class="btn" onclick="addTracking()">Add</button>
     </div>
 
@@ -131,6 +130,7 @@
     </div>
 
     <div id="trackingList"></div>
+
     <h5 class="mt-5">Delivered Packages</h5>
     <div id="deliveredList"></div>
   </div>
@@ -138,16 +138,19 @@
   <script>
     async function addTracking() {
       const input = document.getElementById("trackingInput");
+      const nameInput = document.getElementById("nameInput");
       const number = input.value.trim();
+      const name = nameInput.value.trim();
       if (!number) return;
 
       await fetch('/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number })
+        body: JSON.stringify({ number, name })
       });
 
       input.value = '';
+      nameInput.value = '';
       refreshList();
     }
 
@@ -185,8 +188,8 @@
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start flex-wrap">
             <div>
-              <h5 class="card-title">${item.number}</h5>
-              <p class="card-text">${item.status}</p>
+              <h5 class="card-title">${item.name || 'Package'}</h5>
+              <p class="card-text"><strong>${item.number}</strong><br>${item.status}</p>
             </div>
             <button class="btn btn-sm btn-danger mt-2 mt-sm-0" onclick="removeTracking('${item.number}')">Remove</button>
           </div>
@@ -195,65 +198,25 @@
       return card;
     }
 
-    refreshList();
-  </script>
-
-  <!-- ✅ Service Worker, Install Prompt & Push Subscription -->
-  <script>
-    const VAPID_PUBLIC_KEY = "BGeKJeLpzO5bY1UyLtXG2vQ85X0-oPA7Jpx_KbvQ3qpHDrFt8-D3dvYdwGZCqcObdel2gnNj3tL1TupT_TiePNk";
-
-    // Register service worker
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/service-worker.js').then(() => {
-        console.log('✅ Service Worker registered');
-      });
-    }
-
-    // Install prompt
-    let deferredPrompt;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      const btn = document.createElement("button");
-      btn.innerText = "Install USPS Tracker App";
-      btn.className = "btn btn-outline-success d-block mx-auto my-3";
-      btn.onclick = () => deferredPrompt.prompt();
-      document.body.prepend(btn);
-    });
-
-    // Subscribe to push
+    // Optional: subscribe for push notifications
     async function subscribeToPush() {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-      });
+      if ('serviceWorker' in navigator && 'PushManager' in window) {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: 'BGeKJeLpzO5bY1UyLtXG2vQ85X0-oPA7Jpx_KbvQ3qpHDrFt8-D3dvYdwGZCqcObdel2gnNj3tL1TupT_TiePNk'
+        });
 
-      await fetch('/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription)
-      });
-    }
-
-    if ('PushManager' in window) {
-      subscribeToPush();
-    }
-
-    // Helper to decode base64 public key
-    function urlBase64ToUint8Array(base64String) {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding)
-        .replace(/\-/g, '+')
-        .replace(/_/g, '/');
-
-      const rawData = atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
+        await fetch('/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(subscription)
+        });
       }
-      return outputArray;
     }
+
+    subscribeToPush();
+    refreshList();
   </script>
 </body>
 </html>
