@@ -78,11 +78,9 @@ async function getUSPSAccessToken() {
     headers: {
       'Authorization': `Basic ${credentials}`,
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Accept': 'application/json'  // ✅ This is important for proper parsing
+      'Accept': 'application/json'
     },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials' // ✅ THIS is the correct format
-    }).toString()
+    body: 'grant_type=client_credentials'
   });
 
   const text = await response.text();
@@ -96,6 +94,7 @@ async function getUSPSAccessToken() {
     return null;
   }
 }
+
 
 
 // ✅ Step 2: Fetch tracking status using token
