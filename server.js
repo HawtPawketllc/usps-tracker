@@ -8,11 +8,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = './data.json';
 
-// Replace with your USPS OAuth v3 credentials
 const USPS_CLIENT_ID = 'ogioN65TFIK0IzdaAduJu0ZijFXdovxHdVxjfpR0AX6c7f6t';
 const USPS_CLIENT_SECRET = 'dt7dWjBthEszIZu7o47FzEShh9GOB6caEbilAwQe3jCUHTPcVQslFZ0Divn0vzF5';
 
-// Web push config (replace with your real keys)
 webpush.setVapidDetails(
   'mailto:you@example.com',
   'BGeKJeLpzO5bY1UyLtXG2vQ85X0-oPA7Jpx_KbvQ3qpHDrFt8-D3dvYdwGZCqcObdel2gnNj3tL1TupT_TiePNk',
@@ -26,7 +24,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Push subscription
 app.post('/subscribe', (req, res) => {
   subscribers.push(req.body);
   res.status(201).json({});
@@ -39,7 +36,6 @@ function sendPushToAll(title, body) {
   });
 }
 
-// Load & save
 function loadData() {
   if (fs.existsSync(DATA_FILE)) {
     data = JSON.parse(fs.readFileSync(DATA_FILE));
@@ -52,7 +48,6 @@ function isDelivered(status) {
   return status.toLowerCase().includes('delivered');
 }
 
-// 🔐 Get USPS access token
 let uspsToken = null;
 async function getUSPSAccessToken() {
   try {
@@ -78,7 +73,6 @@ async function getUSPSAccessToken() {
   }
 }
 
-// 📦 Fetch tracking status
 async function fetchUSPSStatus(trackingNumber) {
   const token = uspsToken || await getUSPSAccessToken();
   if (!token) return 'Error: no USPS token';
@@ -92,8 +86,10 @@ async function fetchUSPSStatus(trackingNumber) {
     });
 
     const data = await res.json();
-    const summary = data?.trackingInfo?.trackingSummary?.eventDescription || "No status found.";
-    const eta = data?.trackingInfo?.expectedDeliveryDate;
+    console.log("📦 USPS Tracking JSON:", JSON.stringify(data, null, 2));
+
+    const summary = data?.trackInfo?.[0]?.trackingSummary?.eventDescription || "No status found.";
+    const eta = data?.trackInfo?.[0]?.expectedDeliveryDate;
     return `${summary}${eta ? ` • ETA: ${eta}` : ''}`;
   } catch (err) {
     console.error('❌ USPS fetch error:', err);
@@ -101,7 +97,6 @@ async function fetchUSPSStatus(trackingNumber) {
   }
 }
 
-// 🔁 Auto-update statuses
 async function updateStatuses() {
   const updated = [];
   for (let item of data.active) {
@@ -118,7 +113,6 @@ async function updateStatuses() {
 }
 setInterval(updateStatuses, 1000 * 60 * 5);
 
-// 📥 Add tracking
 app.post('/add', async (req, res) => {
   const { number, name } = req.body;
   const exists = [...data.active, ...data.delivered].some(item => item.number === number);
@@ -136,7 +130,6 @@ app.post('/add', async (req, res) => {
   res.json({ success: true });
 });
 
-// 🗑 Remove tracking
 app.post('/remove', (req, res) => {
   const { number } = req.body;
   data.active = data.active.filter(item => item.number !== number);
@@ -145,12 +138,10 @@ app.post('/remove', (req, res) => {
   res.json({ success: true });
 });
 
-// 📤 Get list
 app.get('/list', (req, res) => {
   res.json(data);
 });
 
-// 🔐 Login check
 app.post('/login', (req, res) => {
   const { password } = req.body;
   if (password === 'track123') {
@@ -160,8 +151,6 @@ app.post('/login', (req, res) => {
   }
 });
 
-
-// 🔄 Start server
 loadData();
 updateStatuses();
 app.listen(PORT, () => {
