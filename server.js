@@ -9,7 +9,6 @@ const PORT = process.env.PORT || 3000;
 
 const FILE = './data.json';
 
-// USPS API OAuth Credentials
 const USPS_CONSUMER_KEY = 'GYI9wayR96LReWKj2Df03hjJKR96JTHWnUD4lwVjHGT4VwlB';
 const USPS_CONSUMER_SECRET = 'C52ifX9GdyInnhjAaSWOhlJTG1VmXvHIne1CJnUhabpbLyw5XvaiVaEGAAXkkn3L';
 
@@ -65,7 +64,6 @@ function extractETA(info) {
   return info?.estimatedDeliveryDate || '';
 }
 
-// ✅ USPS OAuth Token
 async function getUSPSAccessToken() {
   const credentials = Buffer.from(`${USPS_CONSUMER_KEY}:${USPS_CONSUMER_SECRET}`).toString('base64');
 
@@ -91,7 +89,6 @@ async function getUSPSAccessToken() {
   }
 }
 
-// ✅ USPS Tracking via OAuth (v3)
 async function fetchUSPSStatus(trackingNumber) {
   const token = await getUSPSAccessToken();
   if (!token) return "Unable to authenticate with USPS.";
@@ -133,10 +130,10 @@ async function updateStatuses() {
     try {
       const status = await fetchUSPSStatus(item.number);
       if (isDelivered(status)) {
-        data.delivered.push({ number: item.number, status });
-        sendPushToAll("Package Delivered", `Package ${item.number} has been delivered.`);
+        data.delivered.push({ number: item.number, name: item.name, status });
+        sendPushToAll("Package Delivered", `Package ${item.name || item.number} has been delivered.`);
       } else {
-        updated.push({ number: item.number, status });
+        updated.push({ number: item.number, name: item.name, status });
       }
     } catch (e) {
       console.error("❌ Update error:", e);
@@ -149,7 +146,7 @@ async function updateStatuses() {
 setInterval(updateStatuses, 1000 * 60 * 5);
 
 app.post('/add', async (req, res) => {
-  const { number } = req.body;
+  const { number, name } = req.body;
   const all = [...data.active, ...data.delivered];
   if (!all.some(item => item.number === number)) {
     let status = "Tracking pending...";
@@ -160,10 +157,10 @@ app.post('/add', async (req, res) => {
     }
 
     if (isDelivered(status)) {
-      data.delivered.push({ number, status });
-      sendPushToAll("Package Delivered", `Package ${number} has been delivered.`);
+      data.delivered.push({ number, name, status });
+      sendPushToAll("Package Delivered", `Package ${name || number} has been delivered.`);
     } else {
-      data.active.push({ number, status });
+      data.active.push({ number, name, status });
     }
     saveData();
   }
