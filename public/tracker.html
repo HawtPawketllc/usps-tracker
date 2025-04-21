@@ -118,11 +118,18 @@
   <div class="tracker-box">
     <h2 class="text-center mb-4">USPS Package Tracker</h2>
 
-  <div class="input-group mb-3 flex-column flex-sm-row">
-  <input id="trackingInput" type="text" class="form-control mb-2 mb-sm-0 me-sm-2" placeholder="Tracking Number" />
-  <input id="nameInput" type="text" class="form-control mb-2 mb-sm-0 me-sm-2" placeholder="Name" />
-  <button class="btn btn-primary" onclick="addTracking()">Add</button>
-</div>
+    <div class="row g-2 mb-3">
+      <div class="col-12 col-sm-5">
+        <input id="trackingInput" type="text" class="form-control" placeholder="Tracking Number" />
+      </div>
+      <div class="col-12 col-sm-5">
+        <input id="nameInput" type="text" class="form-control" placeholder="Name or Label" />
+      </div>
+      <div class="col-12 col-sm-2">
+        <button class="btn w-100" style="background-color: var(--bm-green); border-color: var(--bm-green); color: #fff;" onmouseover="this.style.backgroundColor=var('--bm-gold')" onmouseout="this.style.backgroundColor=var('--bm-green')" onclick="addTracking()">Add</button>
+
+      </div>
+    </div>
 
 
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
