@@ -70,30 +70,40 @@ function extractETA(info) {
 }
 
 // ✅ Step 1: Get USPS token
-async function getUSPSAccessToken() {
-  const credentials = Buffer.from(`${USPS_CONSUMER_KEY}:${USPS_CONSUMER_SECRET}`).toString('base64');
+async function fetchUSPSStatus(trackingNumber) {
+  const token = await getUSPSAccessToken();
+  if (!token) return "Unable to authenticate with USPS.";
 
-  const response = await fetch('https://api.usps.com/oauth2/v1/token', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Accept': 'application/json'
-    },
-    body: 'grant_type=client_credentials'
-  });
-
-  const text = await response.text();
-  console.log("🔐 USPS OAuth Response:\n", text);
+  const url = `https://api.usps.com/tracking/v3/tracking/${trackingNumber}?expand=DETAIL`;
 
   try {
-    const data = JSON.parse(text);
-    return data.access_token || null;
-  } catch (e) {
-    console.error("❌ USPS token JSON parse error:", e);
-    return null;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    const text = await response.text();
+    console.log("📦 USPS Tracking Response:\n", text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return "USPS tracking response could not be parsed.";
+    }
+
+    const summary = data?.trackInfo?.[0]?.statusSummary || "No summary available.";
+    const eta = data?.trackInfo?.[0]?.estimatedDeliveryDate || "";
+    return `${summary}${eta ? " • ETA: " + eta : ""}`;
+  } catch (err) {
+    console.error("❌ USPS fetch error:", err);
+    return "Error fetching tracking info.";
   }
 }
+
 
 
 
