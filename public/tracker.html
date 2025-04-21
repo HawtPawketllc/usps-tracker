@@ -118,11 +118,12 @@
   <div class="tracker-box">
     <h2 class="text-center mb-4">USPS Package Tracker</h2>
 
-    <div class="input-group mb-3 flex-wrap">
-      <input id="trackingInput" type="text" class="form-control mb-2" placeholder="Tracking Number">
-      <input id="nameInput" type="text" class="form-control mb-2" placeholder="Label or Name (e.g. Mom's Package)">
-      <button class="btn" onclick="addTracking()">Add</button>
-    </div>
+  <div class="input-group mb-3 flex-column flex-sm-row">
+  <input id="trackingInput" type="text" class="form-control mb-2 mb-sm-0 me-sm-2" placeholder="Tracking Number" />
+  <input id="nameInput" type="text" class="form-control mb-2 mb-sm-0 me-sm-2" placeholder="Label or Name (e.g. Mom’s Package)" />
+  <button class="btn btn-primary" onclick="addTracking()">Add</button>
+</div>
+
 
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
       <h5 class="mb-2 mb-sm-0">Your Tracked Packages</h5>
