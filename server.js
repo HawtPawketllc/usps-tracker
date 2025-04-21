@@ -9,10 +9,10 @@ const PORT = process.env.PORT || 3000;
 
 const FILE = './data.json';
 
-// ✅ Web Tools User ID (no OAuth needed)
-const USPS_WEBTOOLS_USERID = '698HAWTP01J45'; // Replace with your Web Tools User ID
+// USPS API OAuth Credentials
+const USPS_CONSUMER_KEY = 'GYI9wayR96LReWKj2Df03hjJKR96JTHWnUD4lwVjHGT4VwlB';
+const USPS_CONSUMER_SECRET = 'C52ifX9GdyInnhjAaSWOhlJTG1VmXvHIne1CJnUhabpbLyw5XvaiVaEGAAXkkn3L';
 
-// 🔔 Push notification setup
 webpush.setVapidDetails(
   'mailto:you@example.com',
   'BGeKJeLpzO5bY1UyLtXG2vQ85X0-oPA7Jpx_KbvQ3qpHDrFt8-D3dvYdwGZCqcObdel2gnNj3tL1TupT_TiePNk',
@@ -26,7 +26,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// 🔐 Login endpoint
 app.post('/login', (req, res) => {
   const { password } = req.body;
   if (password === 'track123') {
@@ -36,7 +35,6 @@ app.post('/login', (req, res) => {
   }
 });
 
-// 🔔 Push subscription endpoint
 app.post('/subscribe', (req, res) => {
   subscribers.push(req.body);
   res.status(201).json({});
@@ -63,32 +61,72 @@ function isDelivered(status) {
   return status.toLowerCase().includes("delivered");
 }
 
-// ✅ USPS Web Tools Tracking API
-async function fetchUSPSStatus(trackingNumber) {
-  const xmlRequest = `
-    <TrackRequest USERID="${USPS_WEBTOOLS_USERID}">
-      <TrackID ID="${trackingNumber}"></TrackID>
-    </TrackRequest>`.trim();
+function extractETA(info) {
+  return info?.estimatedDeliveryDate || '';
+}
 
-  const url = `https://secure.shippingapis.com/ShippingAPI.dll?API=TrackV2&XML=${encodeURIComponent(xmlRequest)}`;
+// ✅ USPS OAuth Token
+async function getUSPSAccessToken() {
+  const credentials = Buffer.from(`${USPS_CONSUMER_KEY}:${USPS_CONSUMER_SECRET}`).toString('base64');
+
+  const response = await fetch('https://api.usps.com/oauth2/v1/token', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json'
+    },
+    body: 'grant_type=client_credentials'
+  });
+
+  const text = await response.text();
+  console.log("🔐 USPS OAuth Response:\n", text);
 
   try {
-    const response = await fetch(url);
-    const text = await response.text();
-    console.log("📦 USPS XML Response:\n", text);
+    const data = JSON.parse(text);
+    return data.access_token || null;
+  } catch (e) {
+    console.error("❌ USPS token JSON parse error:", e);
+    return null;
+  }
+}
 
-    const match = text.match(/<TrackSummary>(.*?)<\/TrackSummary>/);
-    const status = match ? match[1] : "No status found.";
-    const etaMatch = text.match(/<ExpectedDeliveryDate>(.*?)<\/ExpectedDeliveryDate>/);
-    const eta = etaMatch ? ` • ETA: ${etaMatch[1]}` : '';
-    return `${status}${eta}`;
+// ✅ USPS Tracking via OAuth (v3)
+async function fetchUSPSStatus(trackingNumber) {
+  const token = await getUSPSAccessToken();
+  if (!token) return "Unable to authenticate with USPS.";
+
+  const url = `https://api.usps.com/tracking/v3/tracking/${trackingNumber}?expand=DETAIL`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    const text = await response.text();
+    console.log("📦 USPS Tracking Response:\n", text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return "USPS tracking response could not be parsed.";
+    }
+
+    const info = data?.trackInfo?.[0];
+    const status = info?.statusSummary || "No status found.";
+    const eta = extractETA(info);
+    return `${status}${eta ? " • ETA: " + eta : ""}`;
   } catch (err) {
-    console.error("❌ USPS Web Tools API error:", err);
+    console.error("❌ USPS fetch error:", err);
     return "Error fetching tracking info.";
   }
 }
 
-// ✅ Periodic updates
 async function updateStatuses() {
   const updated = [];
   for (let item of data.active) {
@@ -107,9 +145,9 @@ async function updateStatuses() {
   data.active = updated;
   saveData();
 }
-setInterval(updateStatuses, 1000 * 60 * 5); // Every 5 minutes
 
-// ✅ Add tracking
+setInterval(updateStatuses, 1000 * 60 * 5);
+
 app.post('/add', async (req, res) => {
   const { number } = req.body;
   const all = [...data.active, ...data.delivered];
@@ -132,7 +170,6 @@ app.post('/add', async (req, res) => {
   res.json({ success: true });
 });
 
-// ✅ Remove tracking
 app.post('/remove', (req, res) => {
   const { number } = req.body;
   data.active = data.active.filter(item => item.number !== number);
@@ -141,12 +178,10 @@ app.post('/remove', (req, res) => {
   res.json({ success: true });
 });
 
-// ✅ Get all tracking
 app.get('/list', (req, res) => {
   res.json(data);
 });
 
-// Start server
 loadData();
 updateStatuses();
 app.listen(PORT, () => console.log(`✅ USPS Tracker running at http://localhost:${PORT}`));
