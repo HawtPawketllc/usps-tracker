@@ -6,14 +6,13 @@ const webpush = require('web-push');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const USPS_USER_ID = '698HAWTP01J45'; // Deprecated - not used in new API
-const FILE = './data.json';
 
-// ✅ New USPS API credentials
+// ✅ USPS API credentials
 const USPS_CONSUMER_KEY = 'ogioN65TFIK0IzdaAduJu0ZijFXdovxHdVxjfpR0AX6c7f6t';
 const USPS_CONSUMER_SECRET = 'dt7dWjBthEszIZu7o47FzEShh9GOB6caEbilAwQe3jCUHTPcVQslFZ0Divn0vzF5';
 
-// ✅ VAPID keys for push
+const FILE = './data.json';
+
 webpush.setVapidDetails(
   'mailto:you@example.com',
   'BGeKJeLpzO5bY1UyLtXG2vQ85X0-oPA7Jpx_KbvQ3qpHDrFt8-D3dvYdwGZCqcObdel2gnNj3tL1TupT_TiePNk',
@@ -27,6 +26,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+// 🔐 Simple password login
 app.post('/login', (req, res) => {
   const { password } = req.body;
   if (password === 'track123') {
@@ -36,11 +36,13 @@ app.post('/login', (req, res) => {
   }
 });
 
+// 🔔 Subscribe to push notifications
 app.post('/subscribe', (req, res) => {
   subscribers.push(req.body);
   res.status(201).json({});
 });
 
+// ✅ Push to all subscribers
 function sendPushToAll(title, body) {
   subscribers.forEach(sub => {
     webpush.sendNotification(sub, JSON.stringify({ title, body }))
@@ -48,6 +50,7 @@ function sendPushToAll(title, body) {
   });
 }
 
+// ✅ Load/save tracking data
 function saveData() {
   fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
 }
@@ -62,10 +65,11 @@ function isDelivered(status) {
   return status.toLowerCase().includes("delivered");
 }
 
-function extractETA(data) {
-  return data?.trackInfo?.[0]?.estimatedDeliveryDate || '';
+function extractETA(info) {
+  return info?.estimatedDeliveryDate || '';
 }
 
+// ✅ Step 1: Get USPS token
 async function getUSPSAccessToken() {
   const credentials = Buffer.from(`${USPS_CONSUMER_KEY}:${USPS_CONSUMER_SECRET}`).toString('base64');
 
@@ -78,57 +82,87 @@ async function getUSPSAccessToken() {
     body: 'grant_type=client_credentials'
   });
 
-  const data = await response.json();
-  if (!data.access_token) {
-    console.error("❌ Failed to get USPS token:", data);
+  const text = await response.text();
+  console.log("🔐 USPS OAuth Response:\n", text);
+
+  try {
+    const data = JSON.parse(text);
+    return data.access_token || null;
+  } catch (e) {
+    console.error("❌ USPS token JSON parse error:", e);
     return null;
   }
-  return data.access_token;
 }
 
+// ✅ Step 2: Fetch tracking status using token
 async function fetchUSPSStatus(trackingNumber) {
   const token = await getUSPSAccessToken();
   if (!token) return "Unable to authenticate with USPS.";
 
-  const response = await fetch('https://api.usps.com/tracking/v1/track', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ trackingNumber })
-  });
+  try {
+    const response = await fetch('https://api.usps.com/tracking/v1/track', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ trackingNumber })
+    });
 
-  const data = await response.json();
-  console.log("📦 USPS Tracking Response:", data);
+    const text = await response.text();
+    console.log("📦 USPS Tracking Response:\n", text);
 
-  const status = data?.trackInfo?.[0]?.status || "No status found.";
-  const eta = extractETA(data);
-  return `${status}${eta ? " • ETA: " + eta : ""}`;
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return "USPS tracking response could not be parsed.";
+    }
+
+    const info = data?.trackInfo?.[0];
+    const status = info?.status || "No status found.";
+    const eta = extractETA(info);
+    return `${status}${eta ? " • ETA: " + eta : ""}`;
+  } catch (err) {
+    console.error("❌ USPS fetch error:", err);
+    return "Error fetching tracking info.";
+  }
 }
 
+// ✅ Auto refresh all tracking statuses
 async function updateStatuses() {
   const updated = [];
   for (let item of data.active) {
-    const status = await fetchUSPSStatus(item.number);
-    if (isDelivered(status)) {
-      data.delivered.push({ number: item.number, status });
-      sendPushToAll("Package Delivered", `Package ${item.number} has been delivered.`);
-    } else {
-      updated.push({ number: item.number, status });
+    try {
+      const status = await fetchUSPSStatus(item.number);
+      if (isDelivered(status)) {
+        data.delivered.push({ number: item.number, status });
+        sendPushToAll("Package Delivered", `Package ${item.number} has been delivered.`);
+      } else {
+        updated.push({ number: item.number, status });
+      }
+    } catch (e) {
+      console.error("❌ Update failed:", e);
     }
   }
   data.active = updated;
   saveData();
 }
 
-setInterval(updateStatuses, 1000 * 60 * 5);
+setInterval(updateStatuses, 1000 * 60 * 5); // every 5 mins
 
+// ✅ Add a new tracking number
 app.post('/add', async (req, res) => {
   const { number } = req.body;
   const all = [...data.active, ...data.delivered];
   if (!all.some(item => item.number === number)) {
-    const status = await fetchUSPSStatus(number);
+    let status = "Tracking pending...";
+    try {
+      status = await fetchUSPSStatus(number);
+    } catch (e) {
+      console.error("❌ Error adding tracking:", e);
+    }
+
     if (isDelivered(status)) {
       data.delivered.push({ number, status });
       sendPushToAll("Package Delivered", `Package ${number} has been delivered.`);
@@ -140,6 +174,7 @@ app.post('/add', async (req, res) => {
   res.json({ success: true });
 });
 
+// ✅ Remove a tracking number
 app.post('/remove', (req, res) => {
   const { number } = req.body;
   data.active = data.active.filter(item => item.number !== number);
@@ -148,10 +183,13 @@ app.post('/remove', (req, res) => {
   res.json({ success: true });
 });
 
+// ✅ Get all tracked numbers
 app.get('/list', (req, res) => {
   res.json(data);
 });
 
+// 🔄 Init
 loadData();
 updateStatuses();
-app.listen(PORT, () => console.log(`✅ USPS Tracker running at http://localhost:${PORT}`));
+
+app.listen(PORT, () => console.log(`✅ USPS Tracker running on http://localhost:${PORT}`));
