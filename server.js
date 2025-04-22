@@ -8,7 +8,7 @@ const fetch = require('node-fetch');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const PASSWORD = 'your-password'; // Shared login password
+const PASSWORD = 'test1'; // Shared login password
 const DATA_FILE = './data.json';
 
 const USPS_CLIENT_ID = 'ogioN65TFIK0IzdaAduJu0ZijFXdovxHdVxjfpR0AX6c7f6t';
