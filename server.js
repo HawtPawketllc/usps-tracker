@@ -8,49 +8,59 @@ const fetch = require('node-fetch');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const PASSWORD = 'your-password'; // Replace with your shared password
+const PASSWORD = 'your-password'; // Shared login password
 const DATA_FILE = './data.json';
 
-// USPS OAuth credentials
 const USPS_CLIENT_ID = 'ogioN65TFIK0IzdaAduJu0ZijFXdovxHdVxjfpR0AX6c7f6t';
 const USPS_CLIENT_SECRET = 'dt7dWjBthEszIZu7o47FzEShh9GOB6caEbilAwQe3jCUHTPcVQslFZ0Divn0vzF5';
-
 let uspsToken = null;
 let data = { active: [], delivered: [] };
 let subscribers = [];
 
-// VAPID keys for push notifications
 webpush.setVapidDetails(
   'mailto:you@example.com',
   'BGeKJeLpzO5bY1UyLtXG2vQ85X0-oPA7Jpx_KbvQ3qpHDrFt8-D3dvYdwGZCqcObdel2gnNj3tL1TupT_TiePNk',
   'wTLcaFiaQXg8ERKP5QHEJDXCu6pF_erePqFcn5Evk_U'
 );
 
-// Middleware setup
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
 app.use(session({
   secret: 'hawtpawket-session-secret',
   resave: false,
   saveUninitialized: true,
-  cookie: { maxAge: 1000 * 60 * 60 * 4 } // 4 hours
+  cookie: { maxAge: 1000 * 60 * 60 * 4 }
 }));
 
-// Load/save tracking data
-function loadData() {
-  if (fs.existsSync(DATA_FILE)) {
-    data = JSON.parse(fs.readFileSync(DATA_FILE));
+// ✅ LOGIN + PROTECTED ROUTES FIRST
+app.post('/login', (req, res) => {
+  const { password } = req.body;
+  if (password === PASSWORD) {
+    req.session.loggedIn = true;
+    return res.json({ success: true });
   }
-}
-function saveData() {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
-function isDelivered(status) {
-  return status.toLowerCase().includes('delivered');
-}
+  res.status(401).json({ success: false });
+});
 
-// Get USPS OAuth token
+app.get('/tracker.html', (req, res) => {
+  if (req.session.loggedIn) {
+    return res.sendFile(path.join(__dirname, 'public', 'tracker.html'));
+  }
+  res.redirect('/');
+});
+
+app.post('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid');
+    res.redirect('/');
+  });
+});
+
+// ✅ THEN SERVE PUBLIC FILES
+app.use(express.static('public'));
+
+// ✅ USPS TOKEN + TRACKING HANDLERS
 async function getUSPSAccessToken() {
   try {
     const res = await fetch('https://apis.usps.com/oauth2/v3/token', {
@@ -70,15 +80,18 @@ async function getUSPSAccessToken() {
     uspsToken = json.access_token;
     return uspsToken;
   } catch (err) {
-    console.error('❌ Token Error:', err);
+    console.error('❌ Token error:', err);
     return null;
   }
 }
 
-// Fetch USPS tracking info
+function isDelivered(status) {
+  return status.toLowerCase().includes('delivered');
+}
+
 async function fetchUSPSStatus(trackingNumber) {
   const token = uspsToken || await getUSPSAccessToken();
-  if (!token) return "Error: No valid USPS token.";
+  if (!token) return "Error: No USPS token.";
 
   try {
     const res = await fetch(`https://api.usps.com/tracking/v3/tracking/${trackingNumber}?expand=DETAIL`, {
@@ -89,9 +102,7 @@ async function fetchUSPSStatus(trackingNumber) {
     });
 
     const json = await res.json();
-    if (json?.error?.code) {
-      return "Tracking error: " + json.error.code;
-    }
+    if (json?.error?.code) return "Tracking error: " + json.error.code;
 
     const summary = json?.trackingInfo?.trackingSummary?.eventDescription || "No status found.";
     const eta = json?.trackingInfo?.expectedDeliveryDate;
@@ -102,37 +113,7 @@ async function fetchUSPSStatus(trackingNumber) {
   }
 }
 
-// Session login
-app.post('/login', (req, res) => {
-  const { password } = req.body;
-  if (password === PASSWORD) {
-    req.session.loggedIn = true;
-    return res.json({ success: true });
-  }
-  res.status(401).json({ success: false });
-});
-
-// Route protection
-app.get('/tracker.html', (req, res) => {
-  if (req.session.loggedIn) {
-    return res.sendFile(path.join(__dirname, 'public', 'tracker.html'));
-  }
-  res.redirect('/');
-});
-
-app.post('/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie('connect.sid');
-    res.redirect('/');
-  });
-});
-
-// Push subscription
-app.post('/subscribe', (req, res) => {
-  subscribers.push(req.body);
-  res.status(201).json({});
-});
-
+// 🔁 Auto-update
 function sendPushToAll(title, body) {
   subscribers.forEach(sub => {
     webpush.sendNotification(sub, JSON.stringify({ title, body }))
@@ -140,7 +121,16 @@ function sendPushToAll(title, body) {
   });
 }
 
-// Add tracking
+function loadData() {
+  if (fs.existsSync(DATA_FILE)) {
+    data = JSON.parse(fs.readFileSync(DATA_FILE));
+  }
+}
+function saveData() {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+// 📥 Add Tracking
 app.post('/add', async (req, res) => {
   const { number, name } = req.body;
   const exists = [...data.active, ...data.delivered].some(item => item.number === number);
@@ -158,7 +148,7 @@ app.post('/add', async (req, res) => {
   res.json({ success: true });
 });
 
-// Remove tracking
+// 🗑 Remove
 app.post('/remove', (req, res) => {
   const { number } = req.body;
   data.active = data.active.filter(item => item.number !== number);
@@ -167,13 +157,19 @@ app.post('/remove', (req, res) => {
   res.json({ success: true });
 });
 
-// List tracking
+// 📬 List
 app.get('/list', (req, res) => {
   res.json(data);
 });
 
-// Start the server
+// 🔔 Push Subscriptions
+app.post('/subscribe', (req, res) => {
+  subscribers.push(req.body);
+  res.status(201).json({});
+});
+
+// 🚀 Launch
 loadData();
 app.listen(PORT, () => {
-  console.log(`✅ USPS Tracker with OAuth live at http://localhost:${PORT}`);
+  console.log(`✅ USPS Tracker with OAuth is LIVE at http://localhost:${PORT}`);
 });
