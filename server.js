@@ -13,7 +13,6 @@ const DATA_FILE = './data.json';
 
 const USPS_CLIENT_ID = 'ogioN65TFIK0IzdaAduJu0ZijFXdovxHdVxjfpR0AX6c7f6t';
 const USPS_CLIENT_SECRET = 'dt7dWjBthEszIZu7o47FzEShh9GOB6caEbilAwQe3jCUHTPcVQslFZ0Divn0vzF5';
-let uspsToken = null;
 let data = { active: [], delivered: [] };
 let subscribers = [];
 
@@ -33,7 +32,7 @@ app.use(session({
   cookie: { maxAge: 1000 * 60 * 60 * 4 }
 }));
 
-// Auth Routes
+// Login + Auth
 app.post('/login', (req, res) => {
   const { password } = req.body;
   if (password === PASSWORD) {
@@ -60,7 +59,7 @@ app.post('/logout', (req, res) => {
 // Static Files
 app.use(express.static('public'));
 
-// USPS OAuth
+// USPS Token
 async function getUSPSAccessToken() {
   console.log("🔐 Requesting USPS token...");
   try {
@@ -80,24 +79,24 @@ async function getUSPSAccessToken() {
     const json = await res.json();
     if (json.access_token) {
       console.log("✅ USPS token acquired.");
-      uspsToken = json.access_token;
+      return json.access_token;
     } else {
-      console.error("❌ USPS token response error:", json);
+      console.error("❌ Token response error:", json);
+      return null;
     }
-    return uspsToken;
   } catch (err) {
     console.error('❌ Token fetch failed:', err);
     return null;
   }
 }
 
-// USPS Tracking
+// USPS Status Fetcher
 function isDelivered(status) {
   return status.toLowerCase().includes('delivered');
 }
 
 async function fetchUSPSStatus(trackingNumber) {
-  const token = uspsToken || await getUSPSAccessToken();
+  const token = await getUSPSAccessToken(); // 🆕 Always request a fresh token
   if (!token) return "Error: No USPS token.";
 
   console.log("📦 Fetching tracking status for:", trackingNumber);
@@ -115,7 +114,10 @@ async function fetchUSPSStatus(trackingNumber) {
 
     const json = JSON.parse(text);
 
-    if (json?.error?.code) return "Tracking error: " + json.error.code;
+    if (json?.error?.code) {
+      const message = json.error.message || 'Unknown error';
+      return `Tracking error ${json.error.code}: ${message}`;
+    }
 
     const summary = json?.trackingInfo?.trackingSummary?.eventDescription || "No status found.";
     const eta = json?.trackingInfo?.expectedDeliveryDate;
@@ -126,7 +128,7 @@ async function fetchUSPSStatus(trackingNumber) {
   }
 }
 
-// Push
+// Notifications
 function sendPushToAll(title, body) {
   subscribers.forEach(sub => {
     webpush.sendNotification(sub, JSON.stringify({ title, body }))
@@ -134,7 +136,7 @@ function sendPushToAll(title, body) {
   });
 }
 
-// Data
+// Data Handling
 function loadData() {
   if (fs.existsSync(DATA_FILE)) {
     data = JSON.parse(fs.readFileSync(DATA_FILE));
@@ -171,12 +173,12 @@ app.post('/remove', (req, res) => {
   res.json({ success: true });
 });
 
-// List Tracking
+// List Packages
 app.get('/list', (req, res) => {
   res.json(data);
 });
 
-// Push Subscriptions
+// Push Subscription
 app.post('/subscribe', (req, res) => {
   subscribers.push(req.body);
   res.status(201).json({});
