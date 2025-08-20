@@ -102,7 +102,7 @@ async function fetchUSPSStatus(trackingNumber) {
   console.log("📦 Fetching tracking status for:", trackingNumber);
 
   try {
-    cconst res = await fetch(`https://api.usps.com/tracking/v3/base?trackingNumber=${trackingNumber}`, {
+    const res = await fetch(`https://api.usps.com/tracking/v3/base?trackingNumber=${trackingNumber}`, {
 
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -191,5 +191,6 @@ loadData();
 app.listen(PORT, () => {
   console.log(`✅ USPS Tracker is running at http://localhost:${PORT}`);
 });
+
 
 
