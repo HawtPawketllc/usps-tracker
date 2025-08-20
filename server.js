@@ -120,7 +120,8 @@ async function fetchUSPSStatus(trackingNumber) {
       return `Tracking error ${json.error.code}: ${message}`;
     }
 
-    const summary = json?.trackingInfo?.trackingSummary?.eventDescription || "No status found.";
+    const summary = json?.trackingInfo?.status || "No status found.";
+
     const eta = json?.trackingInfo?.expectedDeliveryDate;
     return `${summary}${eta ? ` • ETA: ${eta}` : ''}`;
   } catch (err) {
@@ -190,4 +191,5 @@ loadData();
 app.listen(PORT, () => {
   console.log(`✅ USPS Tracker is running at http://localhost:${PORT}`);
 });
+
 
